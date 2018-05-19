@@ -1,0 +1,1078 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN"
+"http://www.w3.org/TR/html4/loose.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+    <head>
+        <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+        <title>绘制图形</title>
+		<script src='js/jquery-1.11.1.js'></script>
+		<script src='js/spectrum.js'></script>
+		<script src='js/mice_graph.js'></script>
+		<script src='js/mice_common.js'></script>
+		<script src='js/jquery.json-2.4.js'></script>
+		<link rel='stylesheet' href='css/spectrum.css' />
+    </head>
+	<style>
+		body{
+			font-size:12px;
+		}
+	</style>
+	<script>
+		////////////////////////变量定义///////////////////////
+		// 过程点
+    	var savePoint = null;
+		// 选中图形后的8个定位点
+		var selectedMap = new Map();
+		// 临时定位点
+		var tempPoint = null;
+      	// 原点
+		var basePoint = null;
+		// 图形集合
+		var graphs = new Array();
+		// 标签集合
+		var fonts = new Array();
+		// 背景图片
+		var bgImage = null;
+		// 某操作中的图形点结合
+		var graphItem = null;
+		// 设置当前模式 绘制图形draw，选中selected，文字write，填充fill
+		var model = 'selected';
+		// 当前图形
+		var currGraph = null;
+		// 矩形右下坐标
+		var pointYx;
+		// 矩形右上坐标
+		var pointYs;
+		// 矩形左下坐标
+		var pointZx;
+		// 矩形左上坐标
+		var pointZs;
+		// 矩形移动标志
+		var moveMark = false;
+		var zoomMark = false;
+		var followMark = false;
+		var rectMark = false;
+		////////////////////////默认值定义///////////////////////
+		// 默认线框颜色
+		var defaultLineColor = 'black';
+		// 默认线框宽度
+		var defaultLineWidth = '1';
+		// 默认填充颜色
+		var defaultFillColor = 'white';
+		// 选中图形线框颜色
+		var defaultSelectedLineColor = 'red';
+		// 默认标签字体
+		var defaultFont = '14px sans-serif';
+		// 赋予图形序号
+		var graphNum = 0;
+		// 赋予标签序号
+		var fontNum = 0;
+		////////////////////////画布基本设置//////////////////////
+		var canvas = null;
+		var canvas_bg = null;
+		var ctx = null;
+		var ctx_bg = null;
+		$(document).ready(function(){
+			// 填充色插件初始化
+			$("#fillColor").spectrum({
+				color: "#3cb4f6",
+				chooseText: "选择",
+				cancelText: "取消"
+			});
+			// 增加底图
+			$("#bg").click(function(){
+				var imgPath = 'bg.jpg';
+				drawBg(imgPath);
+			});
+			// 画图
+			$("#tx").click(function(){
+				model = 'draw';
+				currGraph = null;
+				reDrawAll();
+				$("body").css('cursor', 'url(css/Pen.cur),auto');
+        	});
+			// 矩形
+			$("#jx").click(function(){
+				model = 'drawRect';
+				currGraph = null;
+				$("body").css('cursor', 'url(css/Pen.cur),auto');
+			});
+			// 选择
+			$("#xz").click(function(){
+				model = 'selected';
+				$("body").css('cursor', 'pointer');
+        	});
+			// 删除
+			$("#sc").click(function(){
+				if(currGraph == null){
+					alert('请选择一个图形');
+				}else{
+					delGraph();
+				}
+        	});
+			// 清空
+			$("#qk").click(function(){
+				initCanvas();
+        	});
+			// 填充
+			$("#tc").click(function(){
+				if(currGraph == null){
+					alert('请选择一个图形');
+				}else{
+					fillGraph();
+				}
+        	});
+			// 边框
+			$("#bk").click(function(){
+				if(currGraph == null){
+					alert('请选择一个图形');
+				}else{
+					borderGraph();
+				}
+        	});
+			// 边框修改
+			$("#bkxg").click(function(){
+				if(currGraph == null){
+					alert('请选择一个图形');
+				}else{
+					borderWidthGraph();
+				}
+			});
+			// 标签
+			$("#bq").click(function(){
+				model = 'write';
+				$("body").css('cursor', 'text');
+        	});
+			// 修改
+			$("#xg").click(function(){
+				if(currGraph == null){
+					alert('请选择一个图形');
+				}else{
+					var regx = /^\d+$/;
+					if(regx.test($('#zh').val())){
+						modifyFontContent();
+					}else{
+						alert('字号只能是数字');
+					}
+				}
+        	});
+			// 取值
+			$("#qz").click(function(){
+				alert($.toJSON(graphs));
+				alert($.toJSON(fonts));
+        	});
+			// 赋值
+			$("#fz").click(function(){
+				var jsonGraphs = '[{"id":"G0","opt":{"fillColor":"#3cb4f6"},"points":[{"x":197,"y":107},{"x":157,"y":301},{"x":317,"y":298},{"x":354,"y":114},{"x":208,"y":115},{"x":197,"y":107}]},{"id":"G1","opt":{"fillColor":"#d4c135"},"points":[{"x":501,"y":136},{"x":433,"y":309},{"x":623,"y":304},{"x":501,"y":136}]}]';
+				var jsonFonts = '[{"id":"T0","opt":null,"point":{"x":295,"y":145},"content":"测试测试"},{"id":"T1","opt":null,"point":{"x":441,"y":243},"content":"测试测试"},{"id":"T2","opt":null,"point":{"x":237,"y":313},"content":"测试测试"},{"id":"T3","opt":null,"point":{"x":597,"y":157},"content":"测试测试1"}]';
+				var bg_image = 'bg.jpg';
+				/*graphs = new Array();
+				fonts = new Array();
+				var tempGraphsObject = $.evalJSON(jsonGraphs);
+				var tempFontsObject = $.evalJSON(jsonFonts);
+				for(var i = 0;i < tempGraphsObject.length;i++){
+					var obj = tempGraphsObject[i];
+					graphs.push(new graph(obj.id, obj.opt, obj.points));
+				}
+				for(var i = 0;i < tempFontsObject.length;i++){
+					var obj = tempFontsObject[i];
+					fonts.push(new font(obj.id, obj.opt, obj.point, obj.content));
+				}
+				drawAll();*/
+				setGraphs(jsonGraphs);
+				setLables(jsonFonts);
+				drawBg(bg_image);
+				setGraphColor('G0', '#FF0000');
+			});
+			////////////////////////画布基本设置//////////////////////
+			canvas = $('#canvas').get(0);
+			canvas_bg = $('#canvas_bg').get(0);
+			ctx = canvas.getContext("2d");
+			ctx_bg = canvas_bg.getContext("2d");
+			ctx.lineWidth = defaultLineWidth;
+			ctx.strokeStyle = defaultLineColor;
+			canvas.addEventListener("mouseup", up, false);
+			canvas.addEventListener("mousedown", down, false);
+			canvas.addEventListener("mousemove", move, false);
+			////////////////////////画布操作方法//////////////////////
+			// 鼠标按下
+			function down(event){
+				initDefault()
+				if(model == 'draw'){
+					draw(event, 'down');
+					followMark = false;
+				}else if(model == 'selected'){
+					selectGraph(event);
+				}else if(model == 'write'){
+					drawText(event);
+				}else if(model == 'move'){
+					moveMark = true;
+					zoomMark = true;
+					tempPoint = new point(event.pageX, event.pageY);
+				}else if(model == 'drawRect'){
+					tempPoint = new point(event.pageX, event.pageY);
+					rectMark = true;
+				}
+			}
+			// 鼠标抬起
+			function up(event){
+				var x = event.pageX;
+				var y = event.pageY;
+				if(model == 'draw'){
+					followMark = true;
+					if(graphItem != null){
+						var tempPoint = graphItem.getLastPoint();
+						if(!compare(new point(x, y), tempPoint, 0)){
+							draw(event, 'up');
+						}
+					}
+					ctx.moveTo(x, y);
+				}else if(model == 'move'){
+					moveMark = false;
+					zoomMark = false;
+					tempPoint = null;
+				}else if(model == 'drawRect'){
+					//drawRect(event);
+					rectMark = false;
+					saveRect();
+				}
+			}
+			// 鼠标移动
+			function move(){
+				if(model == 'draw'){
+					followLine(event);	
+				}else if(model == 'move'){
+					moveGraph(event);
+					zoom(event, selectedMap);
+				}else if(model == 'drawRect'){
+					drawRect(event);
+				}
+			}
+			// 绘制模式
+			function draw(event, str){
+				var x = event.pageX;
+				var y = event.pageY;
+				ctx.beginPath();
+				// 如果没有储存点则画一个起点
+				if(savePoint == null){
+					if(str == 'down'){
+						savePoint = new point(x, y);
+						basePoint = new point(x, y);
+						// 初始化图形
+						graphItem = new graph('G'+graphNum, null, new Array());
+						graphItem.points.push(basePoint);
+						graphNum++;
+					}
+				}else{
+					if(str == 'up'){
+						ctx.moveTo(savePoint.x, savePoint.y);
+						savePoint = new point(x, y);
+						// 如果在起始点附近则直接连接到起始点
+						if(compare(savePoint, basePoint, 10)){
+							ctx.lineTo(basePoint.x, basePoint.y);		
+							// 保存过程节点 
+							graphItem.points.push(basePoint);
+							// 保存图形
+							graphs.push(graphItem);			
+							savePoint = null;
+							basePoint = null;
+							followMark = false;
+							reDrawAll();
+							// 变为选中模式
+							toSelectModel();
+						}else{
+							ctx.lineTo(x, y);
+							// 保存过程节点
+							graphItem.points.push(savePoint);
+						}
+					}else if(str == 'down'){
+						// 不起作用？使用alert后有效
+						//ctx.lineTo(x, y);
+					}
+				}
+				ctx.stroke();
+			}
+			// 绘制标签
+			function drawText(event){
+				var x = event.pageX;
+				var y = event.pageY;
+				var opt = new fontOpt();
+
+				opt.fontSize = $('#zh').val()+"px sans-serif";
+				ctx.font = opt.fontSize;
+				// 不能为空或其他非法字符
+				if($("#content").val() == ''){
+					alert('标签文字为空或含有非法字符');
+				}
+				ctx.fillStyle = defaultLineColor;
+				ctx.fillText($("#content").val(), x, y);
+				fonts.push(new font('T'+fontNum, opt, new point(x, y), $("#content").val()));	
+				fontNum++;	
+				// 变为选中模式
+				toSelectModel();	
+			}
+			// 绘制矩形
+			function drawRect(event){
+				if (rectMark) {
+					reDrawAll();
+					// 右下坐标
+					pointYx = new point(event.pageX, event.pageY);
+					// 右上坐标
+					pointYs = new point(event.pageX, tempPoint.y);
+					// 左下坐标
+					pointZx = new point(tempPoint.x, event.pageY);
+					// 左上坐标
+					pointZs = tempPoint;
+					// 画图
+					ctx.beginPath();
+					ctx.moveTo(pointZs.x, pointZs.y);
+					ctx.lineTo(pointYs.x, pointYs.y);
+					ctx.lineTo(pointYx.x, pointYx.y);
+					ctx.lineTo(pointZx.x, pointZx.y);
+					ctx.lineTo(pointZs.x, pointZs.y);
+					ctx.stroke();
+				}
+			}
+			// 保存矩形
+			function saveRect(){
+				// 构建对象-顺序不能错
+				graphItem = new graph('G'+graphNum, null, new Array());
+				graphItem.points.push(pointZs);
+				graphItem.points.push(pointYs);
+				graphItem.points.push(pointYx);
+				graphItem.points.push(pointZx);
+				graphItem.points.push(pointZs);
+				graphNum++;
+				graphs.push(graphItem);	
+				// 变为选中模式
+				toSelectModel();
+			}
+			
+			// 移动模式
+			function moveGraph(event){
+				var x = event.pageX;
+				var y = event.pageY;
+				if (moveMark) {
+					if (currGraph instanceof graph) {
+						if (pointInFences(new point(x, y), currGraph.points)) {
+							reDrawAll();
+							var moveGraph = new graph(currGraph.id, currGraph.opt, new Array());
+							// 计算偏移量
+							var xP = tempPoint.x - x;
+							var yP = tempPoint.y - y;
+							// 此处需要加入新的过程点，否则会产生巨大偏移量，原因不明
+							tempPoint = new point(x, y);
+							var up = false;
+							var left = false;
+							if (xP > 0) {
+								left = true;
+							}
+							if (yP > 0) {
+								up = true;
+							}
+							// 绘制图形
+							ctx.beginPath();
+							if (currGraph.opt == null) {
+								ctx.lineWidth = defaultLineWidth;
+								ctx.strokeStyle = defaultLineColor;
+								ctx.fillStyle = defaultFillColor;
+							}
+							else {
+								if (currGraph.opt.fillColor != null) {
+									ctx.fillStyle = currGraph.opt.fillColor;
+								}
+								else {
+									ctx.fillStyle = defaultFillColor;
+								}
+								if (currGraph.opt.borderColor != null) {
+									ctx.strokeStyle = currGraph.opt.borderColor;
+								}
+								else {
+									ctx.strokeStyle = defaultLineColor;
+								}
+								if (currGraph.opt.borderWidth != null) {
+									ctx.lineWidth = currGraph.opt.borderWidth;
+								}
+								else {
+									ctx.lineWidth = defaultLineWidth;
+								}
+							}
+							//ctx.strokeStyle = defaultSelectedLineColor;
+							for (var i = 0; i < currGraph.points.length; i++) {
+								var newX, newY;
+								if (left) {
+									newX = currGraph.points[i].x - Math.abs(xP);
+								}
+								else {
+									newX = currGraph.points[i].x + Math.abs(xP);
+								}
+								if (up) {
+									newY = currGraph.points[i].y - Math.abs(yP);
+								}
+								else {
+									newY = currGraph.points[i].y + Math.abs(yP);
+								}
+								var newPoint = new point(newX, newY);
+								ctx.lineTo(newPoint.x, newPoint.y);
+								moveGraph.points.push(newPoint);
+							}
+							ctx.fill();
+							ctx.stroke();
+							selectedMap = selectedGraph(currGraph.points, ctx)
+							var newGraphs = new Array();
+							for (var i = 0; i < graphs.length; i++) {
+								if (currGraph != graphs[i]) {
+									newGraphs.push(graphs[i]);
+								}
+							}
+							// 设置当前图形
+							currGraph = moveGraph;
+							newGraphs.push(moveGraph);
+							
+							graphs = newGraphs;
+						}
+					}
+					else 
+						if (currGraph instanceof font) {
+							// 获取当前图形操作原点坐标
+							var operFontOption = currGraph.point;
+							// 如果在起始点附近才会启动
+							if (compare(new point(x, y), operFontOption, 50)) {
+								reDrawAll();
+								var moveFont = new font(currGraph.id, currGraph.opt, currGraph.point, currGraph.content);
+								// 计算偏移量
+								var xP = operFontOption.x - x;
+								var yP = operFontOption.y - y;
+								var newPoint = new point(Math.abs(currGraph.point.x - xP), Math.abs(currGraph.point.y - yP));
+								moveFont.point = newPoint;
+								// 绘制标签
+								ctx.beginPath();
+								ctx.fillStyle = defaultSelectedLineColor;
+								ctx.fillText(currGraph.content, newPoint.x, newPoint.y);
+								ctx.stroke();
+								
+								var newFonts = new Array();
+								for (var i = 0; i < fonts.length; i++) {
+									if (currGraph != fonts[i]) {
+										newFonts.push(fonts[i]);
+									}
+								}
+								// 设置当前图形
+								currGraph = moveFont;
+								newFonts.push(moveFont);
+								
+								fonts = newFonts;
+							}
+						}
+				}else{
+					var tempMGraph = getGraph(event);
+					if (tempMGraph != null && tempMGraph != currGraph) {
+						toSelectModel();
+					}
+				}
+			}
+			// 选择模式
+			function selectGraph(event){
+				currGraph = getGraph(event);
+				if(currGraph != null){
+					reDrawAll();
+					ctx.beginPath();
+					if(currGraph instanceof graph){
+						if(currGraph.opt == null){
+							ctx.lineWidth = defaultLineWidth;
+							ctx.strokeStyle = defaultLineColor;	
+							ctx.fillStyle = defaultFillColor;
+						}else {
+							if(currGraph.opt.fillColor != null){
+								ctx.fillStyle = currGraph.opt.fillColor;
+							}else{
+								ctx.fillStyle = defaultFillColor;
+							}
+							if(currGraph.opt.borderColor != null){
+								ctx.strokeStyle = currGraph.opt.borderColor;
+							}else{
+								ctx.strokeStyle = defaultLineColor;
+							}
+							if(currGraph.opt.borderWidth != null){
+								ctx.lineWidth = currGraph.opt.borderWidth;
+							}else{
+								ctx.strokeStyle = defaultLineColor;
+							}
+						}
+						currGraphPoints = currGraph.points;
+						//ctx.strokeStyle = defaultSelectedLineColor;
+						for(var i = 0;i < currGraphPoints.length;i++){
+							if (i == 0) {
+								ctx.moveTo(currGraphPoints[i].x, currGraphPoints[i].y);
+							}
+							else {
+								ctx.lineTo(currGraphPoints[i].x, currGraphPoints[i].y);
+							}
+						}
+						ctx.fill();
+						ctx.stroke();
+						selectedMap = selectedGraph(currGraphPoints, ctx)
+					}else if(currGraph instanceof font){
+						if(currGraph.opt == null){
+							ctx.fillStyle = defaultLineColor;	
+							ctx.font = defaultFont;
+						}else {
+							if(currGraph.opt.fontColor != null){
+								ctx.fillStyle = currGraph.opt.fontColor;
+							}else{
+								ctx.fillStyle = defaultLineColor;
+							}
+							if (currGraph.opt.fontSize != null) {
+								ctx.font = currGraph.opt.fontSize;;
+								$("#zh").val(getFontSize(ctx.font));
+							}else{
+								ctx.font = defaultFont;
+							}
+						}
+						ctx.fillStyle = defaultSelectedLineColor;
+						ctx.fillText(currGraph.content, currGraph.point.x, currGraph.point.y);
+						$("#content").val(currGraph.content);
+						ctx.fill();
+						ctx.stroke();
+					}
+					// 如果选中则设置为移动模式
+					toMoveModel();
+				}else{
+					reDrawAll();
+				}
+			}
+			// 修改标签文字内容
+			function modifyFontContent(){
+				if (currGraph instanceof font) {
+					reDrawAll();
+					ctx.beginPath();
+					
+					var opt = currGraph.opt;
+					if(opt == null){
+						opt = new fontOpt();
+					}
+					opt.fontSize = $('#zh').val()+"px sans-serif";
+					ctx.font = opt.fontSize;
+					
+					ctx.fillStyle = defaultSelectedLineColor;
+					ctx.fillText($("#content").val(), currGraph.point.x, currGraph.point.y);
+					
+					ctx.stroke();
+
+					var newFont = new font(currGraph.id, opt, currGraph.point, $("#content").val());
+					var newFonts = new Array();
+					for (var i = 0; i < fonts.length; i++) {
+						if (currGraph != fonts[i]) {
+							newFonts.push(fonts[i]);
+						}
+					}
+					// 设置当前图形
+					currGraph = newFont;
+					newFonts.push(newFont);
+					
+					fonts = newFonts;
+				}
+			}
+			// 填充图形颜色
+			function fillGraph(){
+				if(currGraph != null){
+					reDrawAll();
+					ctx.beginPath();
+					ctx.fillStyle = $("#fillColor").val();
+					if(currGraph instanceof graph){
+						currGraphPoints = currGraph.points;
+						//ctx.strokeStyle = defaultSelectedLineColor;
+						for(var i = 0;i < currGraphPoints.length;i++){
+							ctx.lineTo(currGraphPoints[i].x, currGraphPoints[i].y);
+						}
+						
+						// 定义填充色
+						var opt = currGraph.opt;
+						if(opt == null){
+							opt = new graphOpt();
+						}else{
+							if(currGraph.opt.borderColor != null){
+								ctx.strokeStyle = currGraph.opt.borderColor;
+							}else{
+								ctx.strokeStyle = defaultLineColor;
+							}
+							if(currGraph.opt.borderWidth != null){
+								ctx.lineWidth = currGraph.opt.borderWidth;
+							}else{
+								ctx.lineWidth = defaultLineWidth;
+							}
+						}
+						opt.fillColor = $("#fillColor").val();
+						ctx.fill();
+						ctx.stroke();
+						selectedMap = selectedGraph(currGraphPoints, ctx);
+						
+						var newGraph = new graph(currGraph.id, opt, currGraph.points);
+						
+						var newGraphs = new Array();
+						for (var i = 0; i < graphs.length; i++) {
+							if (currGraph != graphs[i]) {
+								newGraphs.push(graphs[i]);
+							}
+						}
+						// 设置当前图形
+						currGraph = newGraph;
+						newGraphs.push(newGraph);
+						
+						graphs = newGraphs;
+					}if (currGraph instanceof font) {
+						var opt = currGraph.opt;
+						if(opt == null){
+							opt = new fontOpt();
+						}
+						opt.fontColor = $("#fillColor").val();
+						var newFont = new font(currGraph.id, opt, currGraph.point, currGraph.content);
+						
+						ctx.fillText(currGraph.content, currGraph.point.x, currGraph.point.y);
+						var newFonts = new Array();
+						for (var i = 0; i < fonts.length; i++) {
+							if (currGraph != fonts[i]) {
+								newFonts.push(fonts[i]);
+							}
+						}
+						// 设置当前图形
+						currGraph = newFont;
+						newFonts.push(newFont);
+						
+						fonts = newFonts;
+						ctx.fill();
+						ctx.stroke();
+					}
+				}
+			}
+			// 设置图形边框粗细
+			function borderWidthGraph(){
+				if(currGraph != null){
+					reDrawAll();
+					ctx.beginPath();
+					if(currGraph instanceof graph){
+						currGraphPoints = currGraph.points;
+						ctx.lineWidth = $("#cx").val();
+						//ctx.strokeStyle = defaultSelectedLineColor;
+						for(var i = 0;i < currGraphPoints.length;i++){
+							ctx.lineTo(currGraphPoints[i].x, currGraphPoints[i].y);
+						}
+						// 定义边框色
+						var opt = currGraph.opt;
+						if(opt == null){
+							opt = new graphOpt();
+						}else{
+							if(currGraph.opt.fillColor != null){
+								ctx.fillStyle = currGraph.opt.fillColor;
+							}else{
+								ctx.fillStyle = defaultFillColor;
+							}
+							if(currGraph.opt.borderColor != null){
+								ctx.strokeStyle = currGraph.opt.borderColor;
+							}else{
+								ctx.strokeStyle = defaultLineColor;
+							}
+						}
+						ctx.fill();
+						ctx.stroke();
+						selectedMap = selectedGraph(currGraphPoints, ctx);
+						opt.borderWidth = $("#cx").val();
+						
+						var newGraph = new graph(currGraph.id, opt, currGraph.points);
+						
+						var newGraphs = new Array();
+						for (var i = 0; i < graphs.length; i++) {
+							if (currGraph != graphs[i]) {
+								newGraphs.push(graphs[i]);
+							}
+						}
+						// 设置当前图形
+						currGraph = newGraph;
+						newGraphs.push(newGraph);
+						
+						graphs = newGraphs;
+					}
+				}
+			}
+			// 设置图形边框颜色
+			function borderGraph(){
+				if(currGraph != null){
+					reDrawAll();
+					ctx.beginPath();
+					if(currGraph instanceof graph){
+						currGraphPoints = currGraph.points;
+						ctx.strokeStyle = $("#fillColor").val();
+						for(var i = 0;i < currGraphPoints.length;i++){
+							ctx.lineTo(currGraphPoints[i].x, currGraphPoints[i].y);
+						}
+						// 定义边框色
+						var opt = currGraph.opt;
+						if(opt == null){
+							opt = new graphOpt();
+						}else{
+							if(currGraph.opt.fillColor != null){
+								ctx.fillStyle = currGraph.opt.fillColor;
+							}else{
+								ctx.fillStyle = defaultFillColor;
+							}
+							if(currGraph.opt.borderWidth != null){
+								ctx.lineWidth = currGraph.opt.borderWidth;
+							}else{
+								ctx.lineWidth = defaultLineWidth;
+							}
+						}
+						ctx.fill();
+						ctx.stroke();
+						selectedMap = selectedGraph(currGraphPoints, ctx);
+						opt.borderColor = $("#fillColor").val();
+						
+						var newGraph = new graph(currGraph.id, opt, currGraph.points);
+						
+						var newGraphs = new Array();
+						for (var i = 0; i < graphs.length; i++) {
+							if (currGraph != graphs[i]) {
+								newGraphs.push(graphs[i]);
+							}
+						}
+						// 设置当前图形
+						currGraph = newGraph;
+						newGraphs.push(newGraph);
+						
+						graphs = newGraphs;
+					}
+				}
+			}
+			// 缩放
+			function zoom(event, selectedMap){
+				var x = event.pageX;
+				var y = event.pageY;
+				var currPoint = new point(x, y);
+				var tempPoints;
+				// 1.判断鼠标在8个定位点的哪个，根据定位点的类型变换指针类型
+				// 2.如果当前对象是矩形，根据拖动的定位点，重新计算矩形，并根据拖动轨迹重绘图形
+				// 3.如果当前对象是自定义图形，根据拖动点的定位点，重新绘制
+				var post = getCurrSelectedPoint(currPoint, selectedMap)
+				if(zoomMark){
+					if(post != ''){
+						switch(post){
+							// 左上 最大x，最大y不变
+							case 'zs':tempPoints = zoomZs(currPoint);break;
+							// 右上 最小x、最大y不变
+							case 'ys':tempPoints = zoomYs(currPoint);break;
+							// 右下 最小x，最小y不变
+							case 'yx':tempPoints = zoomYx(currPoint);break;
+							// 左下 最大x，最小y不变
+							case 'zx':tempPoints = zoomZx(currPoint);break;
+							// 上中 最大y不变，所有x不变
+							case 'sz':tempPoints = zoomSz(currPoint);break;
+							// 右中 最小x不变，所有y不变
+							case 'yz':tempPoints = zoomYz(currPoint);break;
+							// 下中 最小y不变，所有x不变
+							case 'xz':tempPoints = zoomXz(currPoint);break;
+							// 左中 最大x不变，所有y不变
+							case 'zz':tempPoints = zoomZz(currPoint);break;
+						}
+						moveMark = false;
+						drawNewGraph(tempPoints);
+					}else{
+						moveMark = true;
+					}
+				}
+			}
+			// 绘制新图形，并放到变量中
+			function drawNewGraph(newPoints){
+				// 创建新对象
+				var newGraph = new graph(currGraph.id, currGraph.opt, newPoints);
+				var newGraphs = new Array();
+				for (var i = 0; i < graphs.length; i++) {
+					if (currGraph != graphs[i]) {
+						newGraphs.push(graphs[i]);
+					}
+				}
+				// 设置当前图形
+				currGraph = newGraph;
+				newGraphs.push(newGraph);
+				
+				graphs = newGraphs;
+				// 重新绘制所有
+				reDrawAll();
+				// 绘制图形
+				ctx.beginPath();
+				if(newGraph.opt == null){
+					ctx.lineWidth = defaultLineWidth;
+					ctx.strokeStyle = defaultLineColor;	
+					ctx.fillStyle = defaultFillColor;
+				}else {
+					if(newGraph.opt.fillColor != null){
+						ctx.fillStyle = newGraph.opt.fillColor;
+					}else{
+						ctx.fillStyle = defaultFillColor;
+					}
+					if(newGraph.opt.borderColor != null){
+						ctx.strokeStyle = newGraph.opt.borderColor;
+					}else{
+						ctx.strokeStyle = defaultLineColor;
+					}
+					if(newGraph.opt.borderWidth != null){
+						ctx.lineWidth = newGraph.opt.borderWidth;
+					}else{
+						ctx.lineWidth = defaultLineWidth;
+					}
+				}
+				for (var i = 0; i < newGraph.points.length; i++) {
+					ctx.lineTo(newGraph.points[i].x, newGraph.points[i].y);
+				}
+				ctx.fill();
+				ctx.stroke();
+				selectedMap = selectedGraph(currGraph.points, ctx)
+			}
+			// 删除图形
+			function delGraph(){
+				reDrawAll();
+				if(currGraph instanceof graph){
+					var newGraphs = new Array();
+					for(var i = 0;i < graphs.length;i++){
+						if(currGraph != graphs[i]){
+							newGraphs.push(graphs[i]);
+						}
+					}
+					graphs = newGraphs;
+				}else if(currGraph instanceof font){
+					var newFonts = new Array();
+					for (var i = 0; i < fonts.length; i++) {
+						if (currGraph != fonts[i]) {
+							newFonts.push(fonts[i]);
+						}
+					}
+					fonts = newFonts;
+				}	
+				currGraph = null;
+			}
+			// 重新绘制
+			function reDrawAll(){
+				clearCanvas();
+				drawAll();
+			}
+			// 初始化参数
+			function initDefault(){
+				ctx.lineWidth = defaultLineWidth;
+				ctx.strokeStyle = defaultLineColor;	
+				ctx.fillStyle = defaultFillColor;
+			}
+			// 绘制所有
+			function drawAll(){
+				// 绘制图形
+				for(var k = 0;k < graphs.length;k++){
+					var graph = graphs[k];
+					if(currGraph != null && graph.id == currGraph.id){
+						continue;
+					}
+					// 同一种设置，诸如线宽、颜色等要以beginPath开头
+					ctx.beginPath();
+					if(graph.opt == null){
+						ctx.lineWidth = defaultLineWidth;
+						ctx.strokeStyle = defaultLineColor;	
+						ctx.fillStyle = defaultFillColor;
+					}else {
+						if(graph.opt.fillColor != null){
+							ctx.fillStyle = graph.opt.fillColor;
+						}else{
+							ctx.fillStyle = defaultFillColor;
+						}
+						if(graph.opt.borderColor != null){
+							ctx.strokeStyle = graph.opt.borderColor;
+						}else{
+							ctx.strokeStyle = defaultLineColor;
+						}
+						if(graph.opt.borderWidth != null){
+							ctx.lineWidth = graph.opt.borderWidth;
+						}else{
+							ctx.lineWidth = defaultLineWidth;
+						}
+					}
+					for(var i = 0;i < graph.points.length;i++){
+						var tempPoint = graph.points[i];
+						// 同时绘制多个图形的时候要使用moveTo
+						if(i == 0){
+							ctx.moveTo(tempPoint.x, tempPoint.y);
+						}else{
+							ctx.lineTo(tempPoint.x, tempPoint.y);
+						}
+					}
+					ctx.closePath();
+					ctx.fill();
+					ctx.stroke();
+				}
+				// 绘制标签
+				for(var k = 0;k < fonts.length;k++){
+					var font = fonts[k];
+					if(currGraph != null && font.id == currGraph.id){
+						continue;
+					}
+					// 同一种设置，诸如线宽、颜色等要以beginPath开头
+					ctx.beginPath();
+					if(font.opt == null){
+						ctx.fillStyle = defaultLineColor;	
+						ctx.font = defaultFont;
+					}else {
+						if(font.opt.fontColor != null){
+							ctx.fillStyle = font.opt.fontColor;
+						}else{
+							ctx.fillStyle = defaultLineColor;
+						}
+						if (font.opt.fontSize != null) {
+							ctx.font = font.opt.fontSize;;
+						}else{
+							ctx.font = defaultFont;
+						}
+					}
+					ctx.fillText(font.content, font.point.x, font.point.y);
+					ctx.stroke();
+				}
+			}
+			// 辅助绘图
+			function followLine(event){
+				if(followMark){		
+					reDrawAll();
+					ctx.beginPath();
+					for(var i = 0;i < graphItem.points.length;i++){		
+						var tempPoint = graphItem.points[i];
+						if(i == 0){
+							ctx.moveTo(tempPoint.x, tempPoint.y);
+						}else{
+							ctx.lineTo(tempPoint.x, tempPoint.y);
+						}
+					}
+					
+					var x = event.pageX;
+					var y = event.pageY;
+
+					ctx.lineTo(x, y);
+					ctx.stroke();
+				}
+			}
+			// 绘制背景
+			function drawBg(imgPath){
+				bgImage = imgPath;
+				var image = new Image();
+				image.src = imgPath;
+				image.onload = function(){
+					ctx_bg.drawImage(image,0,0,canvas_bg.width, canvas_bg.height);
+				}
+			} 
+			// 设置图形
+			function setGraphs(jsonGraphs){
+				graphs = new Array();
+				var tempGraphsObject = $.evalJSON(jsonGraphs);
+				for(var i = 0;i < tempGraphsObject.length;i++){
+					var obj = tempGraphsObject[i];
+					graphs.push(new graph(obj.id, obj.opt, obj.points));
+				}
+				drawAll();
+			}
+			// 取出图形
+			function getGraphs(){
+				return $.toJSON(graphs);
+			}
+			// 设置标签
+			function setLables(jsonFonts){
+				fonts = new Array();
+				var tempFontsObject = $.evalJSON(jsonFonts);
+				for(var i = 0;i < tempFontsObject.length;i++){
+					var obj = tempFontsObject[i];
+					fonts.push(new font(obj.id, obj.opt, obj.point, obj.content));
+				}
+				drawAll();
+			}
+			// 取出标签
+			function getLables(){
+				return $.toJSON(fonts);
+			}
+			// 获取当前图形的id
+			function getSelectGraphId(){
+				if(currGraph != null){
+					return currGraph.id;
+				}else{
+					return null;
+				}
+			}
+			// 设置图形填充色
+			function setGraphColor(id, color){
+				var chooseGraph = null;
+				for(var i = 0;i < graphs.length;i++){
+					chooseGraph = graphs[i];
+					if(chooseGraph.id == id){
+						var opt = chooseGraph.opt;
+						if(opt == null){
+							opt = new graphOpt();
+							opt.fillColor = color;
+						}else{
+							opt.fillColor = color;
+						}
+						chooseGraph.opt = opt;
+					}
+					break;
+				}
+				// 重新加载图形
+				var newGraphs = new Array();
+				for (var i = 0; i < graphs.length; i++) {
+					if (chooseGraph != graphs[i]) {
+						newGraphs.push(graphs[i]);
+					}
+				}
+				newGraphs.push(chooseGraph);
+				graphs = newGraphs;
+				// 重新绘制
+				reDrawAll();
+			}
+			// 清空画布
+			function clearCanvas(){
+				ctx.clearRect(0, 0, canvas.width, canvas.height);
+			}
+			// 清空画布
+			function clearBgCanvas(){
+				ctx_bg.clearRect(0, 0, canvas_bg.width, canvas_bg.height);
+			}
+			// 初始化画布
+			function initCanvas(){
+				clearCanvas();
+				clearBgCanvas();
+				graphs = new Array();
+				fonts = new Array();
+				savePoint = null;
+				basePoint = null;
+				currGraph = null;
+				graphItem = null;
+			}
+			
+		});
+    </script>
+    <body>
+    	<!--画布区域 不要通过style设置宽度和高度-->
+		<div id="drawArea" style="position:relative">
+        	<canvas id="canvas" width="900" height="500" style="position:absolute;left:0;top:0;border:1px solid #CCCCCC; z-index:2"></canvas>
+			<canvas id="canvas_bg" width="900" height="500" style="position:absolute;left:0;top:0border:1px solid #CCCCCC; z-index:1"></canvas>
+		</div>
+		<div id="operArea" style="position:relative;top:510px;">
+			<!--操作区域-->
+			<input id="xz" type="button" value="选中" />
+	    	<input id="fillColor" value="#3cb4f6" type='text'/>
+			<input id="tc" type="button" value="填充色" />
+			<input id="bk" type="button" value="边框色" />
+			边框粗细：<input id="cx" type="text" style="width:20px" value="1"/> px
+			<input id="bkxg" type="button" value="修改" />
+	    	<br/>
+			<input id="bg" type="button" value="底图" />
+			<input id="jx" type="button" value="矩形" />
+			<input id="tx" type="button" value="图形" />
+	    	<input id="bq" type="button" value="标签" />
+			内容：<input id="content" type="text" style="width:200px"/>
+			字号：<input id="zh" type="text" style="width:20px" value="14"/> px
+			<input id="xg" type="button" value="修改" />
+			<br/>
+			<input id="sc" type="button" value="删除" /> 	
+			<input id="qk" type="button" value="清空" />
+			<input id="qz" type="button" value="取值" />
+			<input id="fz" type="button" value="赋值" />
+		</div>
+    </body>
+</html>
